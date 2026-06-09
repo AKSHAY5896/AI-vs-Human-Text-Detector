@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TextForensics — AI vs Human Text Detector</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ── Design Tokens ─────────────────────────────── */
+    :root {
+      --bg:          #080C14;
+      --bg-card:     #0F1623;
+      --bg-input:    #131A26;
+      --border:      #1E2D40;
+      --accent:      #00C8E0;
+      --accent-glow: rgba(0, 200, 224, 0.15);
+      --ai-color:    #FF4757;
+      --ai-bg:       rgba(255, 71, 87, 0.1);
+      --human-color: #2ED573;
+      --human-bg:    rgba(46, 213, 115, 0.1);
+      --text-1:      #E8EAED;
+      --text-2:      #9AAFBE;
+      --text-3:      #4A6070;
+      --mono:        'JetBrains Mono', monospace;
+    }
+
+    /* ── Reset & Base ──────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text-1);
+      min-height: 100vh;
+      padding: 0 16px 64px;
+    }
+
+    /* ── Header ────────────────────────────────────── */
+    header {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 48px 0 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 12px;
+    }
+
+    .logo-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 14px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--accent);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+
+    .logo-badge span.dot {
+      width: 6px; height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    h1 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: clamp(28px, 5vw, 42px);
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      line-height: 1.15;
+    }
+
+    h1 em {
+      font-style: normal;
+      color: var(--accent);
+    }
+
+    .tagline {
+      color: var(--text-2);
+      font-size: 15px;
+      max-width: 480px;
+      line-height: 1.6;
+    }
+
+    /* ── Main Card ─────────────────────────────────── */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      max-width: 760px;
+      margin: 0 auto 24px;
+    }
+
+    /* ── Sample Buttons ────────────────────────────── */
+    .sample-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .sample-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-3);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .sample-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 12px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-2);
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    .sample-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Textarea ──────────────────────────────────── */
+    .textarea-wrap {
+      position: relative;
+    }
+
+    #text-input {
+      width: 100%;
+      min-height: 220px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text-1);
+      font-family: 'Inter', sans-serif;
+      font-size: 15px;
+      line-height: 1.7;
+      padding: 16px;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.25s;
+    }
+
+    #text-input::placeholder { color: var(--text-3); }
+    #text-input:focus { border-color: var(--accent); }
+
+    /* Scanner animation on #text-input.scanning */
+    #text-input.scanning {
+      border-color: var(--accent);
+    }
+
+    .scanner-line {
+      position: absolute;
+      left: 1px; right: 1px;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      border-radius: 0 0 10px 10px;
+      pointer-events: none;
+      opacity: 0;
+      top: 0;
+    }
+
+    .scanner-line.active {
+      animation: scan 1.6s ease-in-out;
+    }
+
+    @keyframes scan {
+      0%   { top: 0;    opacity: 0.9; }
+      50%  { top: calc(100% - 2px); opacity: 0.9; }
+      100% { top: calc(100% - 2px); opacity: 0; }
+    }
+
+    /* ── Stats row ─────────────────────────────────── */
+    .stats-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 10px;
+    }
+
+    #word-count {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-3);
+    }
+
+    #char-count {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-3);
+    }
+
+    #char-count.warn { color: #FF4757; }
+
+    /* ── Analyze Button ────────────────────────────── */
+    #analyze-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      margin-top: 16px;
+      padding: 14px;
+      background: var(--accent);
+      color: #080C14;
+      border: none;
+      border-radius: 10px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+      letter-spacing: 0.3px;
+    }
+
+    #analyze-btn:hover:not(:disabled) { opacity: 0.88; }
+    #analyze-btn:active:not(:disabled) { transform: scale(0.99); }
+    #analyze-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(8,12,20,0.3);
+      border-top-color: #080C14;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Error Banner ──────────────────────────────── */
+    #error-banner {
+      display: none;
+      background: rgba(255, 71, 87, 0.08);
+      border: 1px solid rgba(255, 71, 87, 0.3);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 14px;
+      color: #FF7B84;
+      margin-top: 12px;
+    }
+
+    /* ── Results Card ──────────────────────────────── */
+    #result-card {
+      display: none;
+      max-width: 760px;
+      margin: 0 auto 24px;
+      animation: fadeUp 0.4s ease;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Verdict Banner ────────────────────────────── */
+    .verdict-banner {
+      border-radius: 14px 14px 0 0;
+      padding: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .verdict-banner.ai    { background: var(--ai-bg);    border: 1px solid rgba(255,71,87,0.25);   }
+    .verdict-banner.human { background: var(--human-bg); border: 1px solid rgba(46,213,115,0.25); }
+
+    .verdict-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-2);
+      margin-bottom: 4px;
+    }
+
+    .verdict-text {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: clamp(22px, 4vw, 32px);
+      font-weight: 700;
+    }
+
+    .verdict-banner.ai    .verdict-text { color: var(--ai-color); }
+    .verdict-banner.human .verdict-text { color: var(--human-color); }
+
+    .verdict-icon {
+      font-size: 48px;
+      line-height: 1;
+    }
+
+    /* ── Details Section ───────────────────────────── */
+    .details-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-top: none;
+      border-radius: 0 0 14px 14px;
+      padding: 24px 28px;
+      display: grid;
+      gap: 24px;
+    }
+
+    /* Confidence bar */
+    .metric-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .metric-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-2);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .metric-value {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .bar-track {
+      height: 8px;
+      background: #1E2D40;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 999px;
+      width: 0%;
+      transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .bar-fill.ai    { background: linear-gradient(90deg, #FF6B7A, var(--ai-color)); }
+    .bar-fill.human { background: linear-gradient(90deg, #5BEA9A, var(--human-color)); }
+
+    /* Dual probability bars */
+    .prob-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .prob-item {}
+
+    /* Indicators */
+    .section-title {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-3);
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    .indicators-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .indicators-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 14px;
+      color: var(--text-1);
+      line-height: 1.5;
+    }
+
+    .indicators-list li .dot-icon {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+      font-size: 10px;
+    }
+
+    .ai-indicator    .dot-icon { background: var(--ai-bg);    color: var(--ai-color); }
+    .human-indicator .dot-icon { background: var(--human-bg); color: var(--human-color); }
+
+    /* Summary */
+    .summary-box {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-size: 14px;
+      color: var(--text-1);
+      line-height: 1.6;
+      font-style: italic;
+    }
+
+    /* ── Footer ────────────────────────────────────── */
+    footer {
+      text-align: center;
+      margin-top: 40px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-3);
+      letter-spacing: 0.5px;
+    }
+
+    footer a { color: var(--accent); text-decoration: none; }
+
+    /* ── Responsive ────────────────────────────────── */
+    @media (max-width: 520px) {
+      .card, .verdict-banner, .details-section { padding: 20px 16px; }
+      .prob-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="logo-badge">
+      <span class="dot"></span>
+      TextForensics v1.0
+    </div>
+    <h1>Is this text <em>human</em> or AI?</h1>
+    <p class="tagline">
+      Paste any text below — our forensic classifier analyzes writing patterns,
+      tone, and structural signals to determine its origin.
+    </p>
+  </header>
+
+  <!-- Input Card -->
+  <div class="card">
+    <div class="sample-row">
+      <span class="sample-label">Try a sample →</span>
+      <button class="sample-btn" onclick="loadSample('ai')">AI sample</button>
+      <button class="sample-btn" onclick="loadSample('human')">Human sample</button>
+      <button class="sample-btn" onclick="clearText()">Clear</button>
+    </div>
+
+    <div class="textarea-wrap">
+      <textarea id="text-input"
+        placeholder="Paste text here — minimum 20 words for accurate detection..."
+        oninput="updateCounts()"
+        spellcheck="false"></textarea>
+      <div class="scanner-line" id="scanner-line"></div>
+    </div>
+
+    <div class="stats-row">
+      <span id="word-count">0 words</span>
+      <span id="char-count">0 / 6000</span>
+    </div>
+
+    <button id="analyze-btn" onclick="analyze()">
+      <div class="spinner" id="spinner"></div>
+      <span id="btn-text">Analyze Text</span>
+    </button>
+
+    <div id="error-banner"></div>
+  </div>
+
+  <!-- Result Card -->
+  <div id="result-card">
+
+    <!-- Verdict Banner -->
+    <div class="verdict-banner" id="verdict-banner">
+      <div>
+        <div class="verdict-label">Classification</div>
+        <div class="verdict-text" id="verdict-text">—</div>
+      </div>
+      <div class="verdict-icon" id="verdict-icon">🔍</div>
+    </div>
+
+    <!-- Details -->
+    <div class="details-section">
+
+      <!-- Confidence -->
+      <div>
+        <div class="metric-row">
+          <span class="metric-label">Confidence</span>
+          <span class="metric-value" id="conf-value">—</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill" id="conf-bar"></div>
+        </div>
+      </div>
+
+      <!-- AI vs Human Probability -->
+      <div class="prob-grid">
+        <div class="prob-item">
+          <div class="metric-row">
+            <span class="metric-label">AI Probability</span>
+            <span class="metric-value" id="ai-prob-value" style="color: var(--ai-color);">—</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill ai" id="ai-prob-bar"></div>
+          </div>
+        </div>
+        <div class="prob-item">
+          <div class="metric-row">
+            <span class="metric-label">Human Probability</span>
+            <span class="metric-value" id="human-prob-value" style="color: var(--human-color);">—</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill human" id="human-prob-bar"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Indicators -->
+      <div>
+        <div class="section-title">Key Indicators</div>
+        <ul class="indicators-list" id="indicators-list"></ul>
+      </div>
+
+      <!-- Summary -->
+      <div>
+        <div class="section-title">Forensic Summary</div>
+        <div class="summary-box" id="summary-text"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <footer>
+    Built with Python · Flask · GenAI &nbsp;|&nbsp;
+    <a href="https://github.com/AKSHAY5896" target="_blank">github.com/AKSHAY5896</a>
+  </footer>
+
+  <script>
+    // ── Sample texts ──────────────────────────────────
+    const SAMPLES = {
+      ai: `Artificial intelligence has fundamentally transformed the way we approach problem-solving in the modern era. It is worth noting that machine learning algorithms have become increasingly sophisticated, enabling computers to perform tasks that were previously considered exclusive to human intelligence. Furthermore, the ethical implications of AI development cannot be understated, as they raise important questions about privacy, accountability, and the future of work. On one hand, AI offers tremendous benefits in healthcare, education, and scientific research. On the other hand, there are legitimate concerns about algorithmic bias and job displacement. Moving forward, it is essential that we establish robust regulatory frameworks to ensure that AI development aligns with human values and societal well-being.`,
+
+      human: `ok so i've been meaning to write about my uncle's farm for a while now. went there last summer with my cousin priya and honestly it was one of the best trips in years. the village is called Vadgaon — you probably haven't heard of it. 
+
+woke up at 5am because the rooster outside our window had absolutely zero chill. uncle showed us how to check if a mango is ripe (you just smell it — no squeezing!). ate breakfast sitting on the floor, which my back did not appreciate but whatever. 
+
+there's something weird about having no wifi for 3 days. first 12 hours i was going crazy but then... i actually read a whole book? like a physical book? wild. priya got stung by a bee and cried, which was funny until i also got stung 10 minutes later. karma i guess.`
+    };
+
+    function loadSample(type) {
+      document.getElementById('text-input').value = SAMPLES[type];
+      updateCounts();
+      hideError();
+    }
+
+    function clearText() {
+      document.getElementById('text-input').value = '';
+      updateCounts();
+      hideError();
+      document.getElementById('result-card').style.display = 'none';
+    }
+
+    // ── Live counters ─────────────────────────────────
+    function updateCounts() {
+      const text = document.getElementById('text-input').value;
+      const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+      const chars = text.length;
+
+      document.getElementById('word-count').textContent = `${words} word${words !== 1 ? 's' : ''}`;
+      const charEl = document.getElementById('char-count');
+      charEl.textContent = `${chars} / 6000`;
+      charEl.classList.toggle('warn', chars > 5500);
+    }
+
+    // ── Error helpers ─────────────────────────────────
+    function showError(msg) {
+      const el = document.getElementById('error-banner');
+      el.textContent = '⚠ ' + msg;
+      el.style.display = 'block';
+    }
+    function hideError() {
+      document.getElementById('error-banner').style.display = 'none';
+    }
+
+    // ── Analyze ───────────────────────────────────────
+    async function analyze() {
+      const text = document.getElementById('text-input').value.trim();
+      const btn  = document.getElementById('analyze-btn');
+      const spinner = document.getElementById('spinner');
+      const btnText = document.getElementById('btn-text');
+
+      hideError();
+
+      // Loading state
+      btn.disabled = true;
+      spinner.style.display = 'block';
+      btnText.textContent = 'Scanning…';
+
+      // Scanner animation
+      const input = document.getElementById('text-input');
+      const line  = document.getElementById('scanner-line');
+      input.classList.add('scanning');
+      line.classList.remove('active');
+      void line.offsetWidth; // reflow
+      line.classList.add('active');
+
+      try {
+        const res = await fetch('/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          showError(data.error || 'Something went wrong.');
+          return;
+        }
+
+        renderResult(data);
+
+      } catch (err) {
+        showError('Network error. Is the Flask server running?');
+      } finally {
+        btn.disabled = false;
+        spinner.style.display = 'none';
+        btnText.textContent = 'Analyze Text';
+        input.classList.remove('scanning');
+        setTimeout(() => line.classList.remove('active'), 100);
+      }
+    }
+
+    // ── Render result ─────────────────────────────────
+    function renderResult(data) {
+      const isAI = data.classification === 'AI-Generated';
+      const cls  = isAI ? 'ai' : 'human';
+
+      // Verdict banner
+      const banner = document.getElementById('verdict-banner');
+      banner.className = `verdict-banner ${cls}`;
+      document.getElementById('verdict-text').textContent = data.classification;
+      document.getElementById('verdict-icon').textContent = isAI ? '🤖' : '🧑';
+
+      // Confidence bar
+      document.getElementById('conf-value').textContent = `${data.confidence}%`;
+      const confBar = document.getElementById('conf-bar');
+      confBar.className = `bar-fill ${cls}`;
+      setTimeout(() => { confBar.style.width = data.confidence + '%'; }, 50);
+
+      // AI / Human probability
+      const aiProb    = data.ai_probability;
+      const humanProb = 100 - aiProb;
+
+      document.getElementById('ai-prob-value').textContent    = `${aiProb}%`;
+      document.getElementById('human-prob-value').textContent = `${humanProb}%`;
+
+      setTimeout(() => {
+        document.getElementById('ai-prob-bar').style.width    = aiProb + '%';
+        document.getElementById('human-prob-bar').style.width = humanProb + '%';
+      }, 50);
+
+      // Indicators
+      const ul = document.getElementById('indicators-list');
+      ul.innerHTML = '';
+      (data.indicators || []).forEach(ind => {
+        const li = document.createElement('li');
+        li.className = `${cls}-indicator`;
+        li.innerHTML = `<span class="dot-icon">${isAI ? '⚡' : '✦'}</span>${ind}`;
+        ul.appendChild(li);
+      });
+
+      // Summary
+      document.getElementById('summary-text').textContent = data.summary || '—';
+
+      // Show card
+      const card = document.getElementById('result-card');
+      card.style.display = 'block';
+      setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100);
+
+      // Reset bar widths for next analysis
+      ['conf-bar', 'ai-prob-bar', 'human-prob-bar'].forEach(id => {
+        const el = document.getElementById(id);
+        el.style.transition = 'none';
+        // Will re-enable on next render
+      });
+      setTimeout(() => {
+        ['conf-bar', 'ai-prob-bar', 'human-prob-bar'].forEach(id => {
+          document.getElementById(id).style.transition = 'width 1s cubic-bezier(0.4, 0, 0.2, 1)';
+        });
+      }, 100);
+    }
+
+    // ── Keyboard shortcut ─────────────────────────────
+    document.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') analyze();
+    });
+
+    // Init counts
+    updateCounts();
+  </script>
+</body>
+</html>
